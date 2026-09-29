@@ -154,8 +154,20 @@ public:
             return RunResult::Cancelled;
         }
         const TaskId id = slot.id;
-        const TaskResult result = slot.function(
-            slot.context, CancellationToken(&slot.cancel_requested));
+        TaskResult result = TaskResult::Failed;
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+        try {
+#endif
+            result = slot.function(
+                slot.context, CancellationToken(&slot.cancel_requested));
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+        } catch (...) {
+            /* A public task callback cannot unwind through this noexcept
+             * scheduler.  Retire the task as failed instead of requeueing a
+             * callback whose ownership contract has already been broken. */
+            result = TaskResult::Failed;
+        }
+#endif
         (void)id;
         slot.running = false;
         if (slot.cancel_requested || result == TaskResult::Complete ||
